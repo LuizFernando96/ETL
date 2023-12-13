@@ -2,6 +2,7 @@ import zipfile
 import pendulum
 import requests
 import pandas as pd
+import io
 from io import BytesIO
 from airflow.decorators import dag, task
 from airflow.providers.postgres.hooks.postgres import PostgresHook
@@ -21,96 +22,99 @@ def b3_retro2():
     # Task que faz o download, processamento e carga dos dados da B3.
     @task()
     def process_data2021():
-        Ano = 2021
+
         # Enquanto a variável Ano for menor ou igual a 2023:
-        print("Iniciando procedimento no ano "+str(Ano)+"...")  
-        
+
         # URL do arquivo ZIP para baixar.
-        url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(Ano) + ".ZIP"
+        url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(2021) + ".ZIP"
 
         # Download do arquivo ZIP
-        print("Baixando arquivo do ano " + str(Ano) +"...")
         response = requests.get(url)
 
         # Se o response retornar o status 200, ele começa a etapa de processamento dos dados.
-        if response.status_code == 200:
+       # zip_file = zipfile.ZipFile(BytesIO(response.content))
 
-            zip_file = zipfile.ZipFile(BytesIO(response.content))
+       # file_list = zip_file.namelist()
 
-            file_list = zip_file.namelist()
+        chosen_file = 'COTAHIST_A' + str(2021) + '.TXT'
 
-            chosen_file = 'COTAHIST_A' + str(Ano) + '.TXT'
+       # extracted_file_content = zip_file.read(chosen_file)
 
-            extracted_file_content = zip_file.read(chosen_file)
-
-            # Define o tamanho correto dos campos (específicado na documentação da B3).
-            tamanho_campos=[2,8,2,12,3,12,10,3,4,13,13,13,13,13,13,13,5,18,18,13,1,8,7,13,12,3]
-            
+       # print("teste")
+        # Define o tamanho correto dos campos (específicado na documentação da B3).
+        tamanho_campos=[2,8,2,12,3,12,10,3,4,13,13,13,13,13,13,13,5,18,18,13,1,8,7,13,12,3]
+       # print("tamanho_campo")
             # Adiciona o arquivo TXT em um dataframe chamado dados_acoes.
-            dados_acoes = pd.read_fwf(BytesIO(extracted_file_content), widths=tamanho_campos, header=0)
-            
+       # dados_acoes = pd.read_fwf(BytesIO(extracted_file_content), widths=tamanho_campos, header=0)
+        with zipfile.ZipFile(io.BytesIO(response.content)) as zip_file:
+                with zip_file.open(chosen_file) as extracted_file:
+                        dados_acoes = pd.read_fwf(extracted_file, widths=tamanho_campos, header=0)
+    
+
+
+
+
             # Define as colunas no dataframe.
-            dados_acoes.columns = [    
-            "tipo_registro",
-            "data_pregao",
-            "cod_bdi",
-            "cod_negociacao",
-            "tipo_mercado",
-            "nome_empresa",
-            "especificacao_papel",
-            "prazo_dias_merc_termo",
-            "moeda_referencia",
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "numero_negocios",
-            "quantidade_papeis_negociados",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "indicador_correcao_precos",
-            "data_vencimento",
-            "fator_cotacao",
-            "preco_exercicio_pontos",
-            "cod_isin",
-            "num_distribuicao_papel"
-            ]
-            
-            linha=len(dados_acoes["data_pregao"])
-            dados_acoes=dados_acoes.drop(linha-1)
+        dados_acoes.columns = [
+        "tipo_registro",
+        "data_pregao",
+        "cod_bdi",
+        "cod_negociacao",
+        "tipo_mercado",
+        "nome_empresa",
+        "especificacao_papel",
+        "prazo_dias_merc_termo",
+        "moeda_referencia",
+        "preco_abertura",
+        "preco_maximo",
+        "preco_minimo",
+        "preco_medio",
+        "preco_ultimo_negocio",
+        "preco_melhor_oferta_compra",
+        "preco_melhor_oferta_venda",
+        "numero_negocios",
+        "quantidade_papeis_negociados",
+        "volume_total_negociado",
+        "preco_exercicio",
+        "indicador_correcao_precos",
+        "data_vencimento",
+        "fator_cotacao",
+        "preco_exercicio_pontos",
+        "cod_isin",
+        "num_distribuicao_papel"
+        ]
 
-            # Ajustando valores com vírgula.
-            listaVirgula=[
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "preco_exercicio_pontos"
-            ]
+        linha=len(dados_acoes["data_pregao"])
+        dados_acoes=dados_acoes.drop(linha-1)
 
-            for coluna in listaVirgula:
+        # Ajustando valores com vírgula.
+        listaVirgula=[
+        "preco_abertura",
+        "preco_maximo",
+        "preco_minimo",
+        "preco_medio",
+        "preco_ultimo_negocio",
+        "preco_melhor_oferta_compra",
+        "preco_melhor_oferta_venda",
+        "volume_total_negociado",
+        "preco_exercicio",
+        "preco_exercicio_pontos"
+        ]
+        
+        for coluna in listaVirgula:
                 dados_acoes[coluna]=[i/100. for i in dados_acoes[coluna]]
 
-            # Ajustando a coluna 'data_pregao' para o tipo Date.
-            dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
-            dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%Y-%m-%d')
+        # Ajustando a coluna 'data_pregao' para o tipo Date.
+        dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
+        dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%Y-%m-%d')
 
-            # Ajustando algumas colunas para o tipo Int.
-            dados_acoes[['cod_bdi','fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']] \
+        # Ajustando algumas colunas para o tipo Int.
+        dados_acoes[['cod_bdi','fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']] \
                 = dados_acoes[['cod_bdi', 'fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']].astype(int)
-            
-            zip_file.close()
-            print(f"Ano {Ano} Concluído")
-        else:
-            print(f"Falha ao baixar o arquivo ")
+
+        zip_file.close()
+        
+
 
         # Define variáveis para realizar a conexão com o banco.
         hook = PostgresHook(postgres_conn_id='postgres-airflow')
@@ -125,240 +129,19 @@ def b3_retro2():
         except Exception as e:
             print(e)
 
-        # Acrescenta mais um ano para realizar o loop. 
+        # Acrescenta mais um ano para realizar o loop.
 
         # Garante que, ao iniciar o loop, o dataframe dados_acoes esteja vazio.
-                
+
         # Task que cria a estrutura da tabela 'stage' no banco de dados.
-    @task()
-    def process_data2022():
-        Ano = 2022
-        # Enquanto a variável Ano for menor ou igual a 2023:
-        print("Iniciando procedimento no ano "+str(Ano)+"...")  
-        
-        # URL do arquivo ZIP para baixar.
-        url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(Ano) + ".ZIP"
-
-        # Download do arquivo ZIP
-        print("Baixando arquivo do ano " + str(Ano) +"...")
-        response = requests.get(url)
-
-        # Se o response retornar o status 200, ele começa a etapa de processamento dos dados.
-        if response.status_code == 200:
-
-            zip_file = zipfile.ZipFile(BytesIO(response.content))
-
-            file_list = zip_file.namelist()
-
-            chosen_file = 'COTAHIST_A' + str(Ano) + '.TXT'
-
-            extracted_file_content = zip_file.read(chosen_file)
-
-            # Define o tamanho correto dos campos (específicado na documentação da B3).
-            tamanho_campos=[2,8,2,12,3,12,10,3,4,13,13,13,13,13,13,13,5,18,18,13,1,8,7,13,12,3]
-            
-            # Adiciona o arquivo TXT em um dataframe chamado dados_acoes.
-            dados_acoes = pd.read_fwf(BytesIO(extracted_file_content), widths=tamanho_campos, header=0)
-            
-            # Define as colunas no dataframe.
-            dados_acoes.columns = [    
-            "tipo_registro",
-            "data_pregao",
-            "cod_bdi",
-            "cod_negociacao",
-            "tipo_mercado",
-            "nome_empresa",
-            "especificacao_papel",
-            "prazo_dias_merc_termo",
-            "moeda_referencia",
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "numero_negocios",
-            "quantidade_papeis_negociados",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "indicador_correcao_precos",
-            "data_vencimento",
-            "fator_cotacao",
-            "preco_exercicio_pontos",
-            "cod_isin",
-            "num_distribuicao_papel"
-            ]
-            
-            linha=len(dados_acoes["data_pregao"])
-            dados_acoes=dados_acoes.drop(linha-1)
-
-            # Ajustando valores com vírgula.
-            listaVirgula=[
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "preco_exercicio_pontos"
-            ]
-
-            for coluna in listaVirgula:
-                dados_acoes[coluna]=[i/100. for i in dados_acoes[coluna]]
-
-            # Ajustando a coluna 'data_pregao' para o tipo Date.
-            dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
-            dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%Y-%m-%d')
-
-            # Ajustando algumas colunas para o tipo Int.
-            dados_acoes[['cod_bdi','fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']] \
-                = dados_acoes[['cod_bdi', 'fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']].astype(int)
-            
-            zip_file.close()
-            print(f"Ano {Ano} Concluído")
-        else:
-            print(f"Falha ao baixar o arquivo ")
-
-        # Define variáveis para realizar a conexão com o banco.
-        hook = PostgresHook(postgres_conn_id='postgres-airflow')
-        conn = hook.get_conn()
-        cur = conn.cursor()
-        try:
-            # Estabelece conexão com o banco de dados PostgreSQL e carrega os dados na tabela 'stage'
-            engine = create_engine("postgresql+psycopg2://airflow:airflow@host.docker.internal/airflow")
-            dados_acoes.to_sql(name='stage', con=engine, if_exists='append', index=False)
-            conn.commit()
-            cur.close()
-        except Exception as e:
-            print(e)
-
-        # Acrescenta mais um ano para realizar o loop. 
-
-        # Garante que, ao iniciar o loop, o dataframe dados_acoes esteja vazio.
-                
-        # Task que cria a estrutura da tabela 'stage' no banco de dados.
-    @task()
-    def process_data2023():
-        Ano = 2023
-        # Enquanto a variável Ano for menor ou igual a 2023:
-        print("Iniciando procedimento no ano "+str(Ano)+"...")  
-        
-        # URL do arquivo ZIP para baixar.
-        url = "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A" + str(Ano) + ".ZIP"
-
-        # Download do arquivo ZIP
-        print("Baixando arquivo do ano " + str(Ano) +"...")
-        response = requests.get(url)
-
-        # Se o response retornar o status 200, ele começa a etapa de processamento dos dados.
-        if response.status_code == 200:
-
-            zip_file = zipfile.ZipFile(BytesIO(response.content))
-
-            file_list = zip_file.namelist()
-
-            chosen_file = 'COTAHIST_A' + str(Ano) + '.TXT'
-
-            extracted_file_content = zip_file.read(chosen_file)
-
-            # Define o tamanho correto dos campos (específicado na documentação da B3).
-            tamanho_campos=[2,8,2,12,3,12,10,3,4,13,13,13,13,13,13,13,5,18,18,13,1,8,7,13,12,3]
-            
-            # Adiciona o arquivo TXT em um dataframe chamado dados_acoes.
-            dados_acoes = pd.read_fwf(BytesIO(extracted_file_content), widths=tamanho_campos, header=0)
-            
-            # Define as colunas no dataframe.
-            dados_acoes.columns = [    
-            "tipo_registro",
-            "data_pregao",
-            "cod_bdi",
-            "cod_negociacao",
-            "tipo_mercado",
-            "nome_empresa",
-            "especificacao_papel",
-            "prazo_dias_merc_termo",
-            "moeda_referencia",
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "numero_negocios",
-            "quantidade_papeis_negociados",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "indicador_correcao_precos",
-            "data_vencimento",
-            "fator_cotacao",
-            "preco_exercicio_pontos",
-            "cod_isin",
-            "num_distribuicao_papel"
-            ]
-            
-            linha=len(dados_acoes["data_pregao"])
-            dados_acoes=dados_acoes.drop(linha-1)
-
-            # Ajustando valores com vírgula.
-            listaVirgula=[
-            "preco_abertura",
-            "preco_maximo",
-            "preco_minimo",
-            "preco_medio",
-            "preco_ultimo_negocio",
-            "preco_melhor_oferta_compra",
-            "preco_melhor_oferta_venda",
-            "volume_total_negociado",
-            "preco_exercicio",
-            "preco_exercicio_pontos"
-            ]
-
-            for coluna in listaVirgula:
-                dados_acoes[coluna]=[i/100. for i in dados_acoes[coluna]]
-
-            # Ajustando a coluna 'data_pregao' para o tipo Date.
-            dados_acoes['data_pregao'] = pd.to_datetime(dados_acoes.data_pregao)
-            dados_acoes['data_pregao'] = dados_acoes['data_pregao'].dt.strftime('%Y-%m-%d')
-
-            # Ajustando algumas colunas para o tipo Int.
-            dados_acoes[['cod_bdi','fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']] \
-                = dados_acoes[['cod_bdi', 'fator_cotacao', 'numero_negocios', 'quantidade_papeis_negociados', 'volume_total_negociado', 'preco_exercicio_pontos', 'num_distribuicao_papel']].astype(int)
-            
-            zip_file.close()
-            print(f"Ano {Ano} Concluído")
-        else:
-            print(f"Falha ao baixar o arquivo ")
-
-        # Define variáveis para realizar a conexão com o banco.
-        hook = PostgresHook(postgres_conn_id='postgres-airflow')
-        conn = hook.get_conn()
-        cur = conn.cursor()
-        try:
-            # Estabelece conexão com o banco de dados PostgreSQL e carrega os dados na tabela 'stage'
-            engine = create_engine("postgresql+psycopg2://airflow:airflow@host.docker.internal/airflow")
-            dados_acoes.to_sql(name='stage', con=engine, if_exists='append', index=False)
-            conn.commit()
-            cur.close()
-        except Exception as e:
-            print(e)
-
-        # Acrescenta mais um ano para realizar o loop. 
-
-        # Garante que, ao iniciar o loop, o dataframe dados_acoes esteja vazio.
-                
-        # Task que cria a estrutura da tabela 'stage' no banco de dados.
+    
     @task()
     def createStage():
-        # 
+        #
         hook = PostgresHook(postgres_conn_id='postgres-airflow')
         conn = hook.get_conn()
         cur = conn.cursor()
-        # Se existir, exclui a tabela stage. Em seguir, cria a tabela stage. 
+        # Se existir, exclui a tabela stage. Em seguir, cria a tabela stage.
         query = """
             DROP TABLE IF EXISTS stage;
 
@@ -390,7 +173,7 @@ def b3_retro2():
                 , preco_exercicio_pontos bigint
                 , cod_isin varchar(255)
                 , num_distribuicao_papel bigint
-            ); 
+            );
             """
         cur.execute(query)
         conn.commit()
@@ -414,32 +197,32 @@ def b3_retro2():
         # Cria a estrutura da tabela dimensão dim_tipo_mercado.
         cur.execute("""
             CREATE TABLE dim_tipo_mercado (
-                tipo_mercado bigint PRIMARY KEY, 
+                tipo_mercado bigint PRIMARY KEY,
                 desc_tipo_mercado varchar(255)
             )
-        """)    
+        """)
         conn.commit()
         # Cria a estrutura da tabela dimensão dim_empresas.
         cur.execute("""
             CREATE TABLE dim_empresas (
-                cod_negociacao varchar(255) primary key, 
-                nome_empresa varchar(255) 
-            ) 
+                cod_negociacao varchar(255) primary key,
+                nome_empresa varchar(255)
+            )
         """)
         conn.commit()
         # Cria a estrutura da tabela dimensão dim_papeis.
         cur.execute("""
             CREATE TABLE dim_papeis (
-                especificacao_papel varchar(255) primary key, 
-                num_distribuicao_papel bigint, 
-                cod_isin varchar(255) 
+                especificacao_papel varchar(255) primary key,
+                num_distribuicao_papel bigint,
+                cod_isin varchar(255)
             )
         """)
         conn.commit()
         # Cria a estrutura da tabela dimensão dim_cod_bdi.
         cur.execute("""
             CREATE TABLE dim_cod_bdi (
-                cod_bdi bigint primary key, 
+                cod_bdi bigint primary key,
                 desc_cod_bdi varchar(255)
             )
         """)
@@ -450,19 +233,19 @@ def b3_retro2():
                 id_pregao bigint primary key,
                 cod_bdi bigint REFERENCES dim_cod_bdi(cod_bdi),
                 tipo_mercado bigint REFERENCES dim_tipo_mercado(tipo_mercado),
-                cod_negociacao varchar(255) REFERENCES dim_empresas(cod_negociacao), 
-                especificacao_papel varchar(255) REFERENCES dim_papeis(especificacao_papel), 
-                data_pregao date, 
-                preco_melhor_oferta_compra decimal, 
-                preco_melhor_oferta_venda decimal, 
-                moeda_referencia varchar(255), 
-                numero_negocios bigint, 
-                preco_abertura decimal,  
-                preco_maximo decimal, 
-                preco_medio decimal, 
-                preco_minimo decimal, 
+                cod_negociacao varchar(255) REFERENCES dim_empresas(cod_negociacao),
+                especificacao_papel varchar(255) REFERENCES dim_papeis(especificacao_papel),
+                data_pregao date,
+                preco_melhor_oferta_compra decimal,
+                preco_melhor_oferta_venda decimal,
+                moeda_referencia varchar(255),
+                numero_negocios bigint,
+                preco_abertura decimal,
+                preco_maximo decimal,
+                preco_medio decimal,
+                preco_minimo decimal,
                 preco_ultimo_negocio decimal,
-                tipo_registro bigint, 
+                tipo_registro bigint,
                 volume_total_negociado bigint
             )
         """)
@@ -509,7 +292,7 @@ def b3_retro2():
         # Faz inserção na tabela dimensão dim_papeis utilizando o 'DISTINCT' para pegar remover duplicatas.
         cur.execute("""
             INSERT INTO dim_papeis(especificacao_papel, num_distribuicao_papel, cod_isin)
-            SELECT DISTINCT especificacao_papel, num_distribuicao_papel, cod_isin 
+            SELECT DISTINCT especificacao_papel, num_distribuicao_papel, cod_isin
             FROM stage
             ON CONFLICT DO NOTHING
         """)
@@ -572,28 +355,28 @@ def b3_retro2():
         # Faz inserção na tabela fato fato_pregao, selecionando as tabelas para compôr a tabela.
         cur.execute("""
             INSERT INTO fato_pregao(
-                id_pregao, cod_bdi, tipo_mercado, cod_negociacao, especificacao_papel, data_pregao, preco_melhor_oferta_compra, 
-                preco_melhor_oferta_venda, moeda_referencia, numero_negocios, preco_abertura, preco_maximo, preco_medio, preco_minimo, 
+                id_pregao, cod_bdi, tipo_mercado, cod_negociacao, especificacao_papel, data_pregao, preco_melhor_oferta_compra,
+                preco_melhor_oferta_venda, moeda_referencia, numero_negocios, preco_abertura, preco_maximo, preco_medio, preco_minimo,
                 preco_ultimo_negocio, tipo_registro, volume_total_negociado
             )
             SELECT
                 s.id_pregao,
-                dc.cod_bdi, 
+                dc.cod_bdi,
                 dtm.tipo_mercado,
-                de.cod_negociacao, 
-                dp.especificacao_papel,  
-                s.data_pregao, 
-                s.preco_melhor_oferta_compra, 
+                de.cod_negociacao,
+                dp.especificacao_papel,
+                s.data_pregao,
+                s.preco_melhor_oferta_compra,
                 s.preco_melhor_oferta_venda,
-                s.moeda_referencia, 
-                s.numero_negocios, 
-                s.preco_abertura,  
-                s.preco_maximo, 
-                s.preco_medio, 
-                s.preco_minimo, 
-                s.preco_ultimo_negocio, 
-                s.tipo_registro, 
-                s.volume_total_negociado 
+                s.moeda_referencia,
+                s.numero_negocios,
+                s.preco_abertura,
+                s.preco_maximo,
+                s.preco_medio,
+                s.preco_minimo,
+                s.preco_ultimo_negocio,
+                s.tipo_registro,
+                s.volume_total_negociado
             FROM stage s
             JOIN dim_cod_bdi dc ON s.cod_bdi = dc.cod_bdi
             JOIN dim_tipo_mercado dtm ON s.tipo_mercado = dtm.tipo_mercado
@@ -601,17 +384,14 @@ def b3_retro2():
             JOIN dim_papeis dp ON s.especificacao_papel = dp.especificacao_papel
         """)
         conn.commit()
-        cur.close()  
-    
+        cur.close()
+
     # Define variáveis para a chamada das funções criadas.
     process_data1 = process_data2021()
-    process_data2 = process_data2022()
-    process_data3 = process_data2023()
     createStage1 = createStage()
     createTables1 = createTables()
     load1 = load()
 
     # Define a ordem em que as Tasks serão executadas.
-    createStage1 >> createTables1 >> process_data1 >> process_data2 >> process_data3 >> load1
-b3_retro1()
-
+    createStage1 >> createTables1 >> process_data1 >> load1
+b3_retro2()
